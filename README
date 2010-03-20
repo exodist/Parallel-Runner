@@ -1,0 +1,127 @@
+NAME
+    Parallel::Runner - An object to manage running things in parallel
+    processes.
+
+DESCRIPTION
+    There are several other modules to do this, you probably want one of
+    them. This module exists as a super specialised parallel task manager.
+    You create the object with a proces limit and callbacks for what to do
+    while waiting for a free process slot, as well as a callback for what a
+    process shoudl do just before exiting.
+
+    You must explicetly call $runner->finish() when you are done. If the
+    runner is destroyed before it's children are finished a warning will be
+    generated and your child processes will be killed, by force if
+    necessary.
+
+    If you specify a maximum of 1 then no forking will occur, and run() will
+    block until the coderef returns. You can force a fork by providing a
+    boolean true value as the second argument to run(), this will force the
+    runner to fork before running the coderef, however run() will still
+    block until it the child exits.
+
+SYNOPSYS
+        #!/usr/bin/perl
+        use strict;
+        use warnings;
+        use Parallel::Runner;
+
+        my $runner = Parallel::Runner->new(4);
+        $runner->run( sub { ... } );
+        $runner->run( sub { ... } );
+        $runner->run( sub { ... } );
+        $runner->run( sub { ... } );
+
+        # This will block until one of the previous 4 finishes
+        $runner->run( sub { ... } );
+
+        # Do not forget this.
+        $runner->finish;
+
+CONSTRUCTOR
+    $runner = $class->new( $max, $accessor => $value, ... );
+        Create a new instance of Parallel::Runner. $accessor can be anything
+        listed under the ACCESSORS section. $max should be the maximum
+        number of processes allowed, defaults to 1.
+
+ACCESSORS
+    These are simple accessors, provididng an argument sets the accessor to
+    that argument, no argument it simply returns the current value.
+
+    $val = $runner->exit_callback( \&callback )
+        Codref to call just before a child exits (called within child)
+
+    $val = $runner->iteration_callback( $newval )
+        Coderef to call multiple times in a loop while run() is blocking
+        waiting for a process slot.
+
+    $val = $runner->pids([ $pid1, $pid2, ... ])
+        Arrayref of child pids
+
+    $val = $runner->pid( $newval )
+        pid of the parent process
+
+    $val = $runner->max( $newval )
+        Maximum number of children
+
+OBJECT METHODS
+    run( $code )
+    run( $code, $force_fork )
+        Run the specified code in a child process. Blocks if no free slots
+        are available. Force fork can be used to force a fork when max is 1,
+        however it will still block until the child exits.
+
+    get_tid()
+        Get the number of a free process slot, will block if none are
+        available.
+
+    tid_pid( $pid )
+        Get the process slot number for a pid.
+
+    finish()
+    finish( $timeout )
+    finish( $timeout, $timeoutcallback )
+        Wait for all children to finish, then clean up after them. If a
+        timeout is specified it will return after the timeout regardless of
+        wether or not children have all exited. If there is a timeout call
+        back then that code will be run upon timeout just before the method
+        returns.
+
+        NOTE: DO NOT LET YOUR RUNNER BE DESTROYED BEFORE FINISH COMPLETES
+        WITHOUT A TIMEOUT.
+
+        the runner will kill all childred, possibly with force if your
+        runner is destroyed with children still running, or not waited on.
+
+    killall( $sig )
+        Send all children the specified kill signal.
+
+    DESTROY()
+        Automagically called when the object is destroyed. If called while
+        children are running it will forcefully clean up after you as
+        follows:
+
+        1) Sends an ugly warning.
+
+        2) Will first give all your children 1 second to complete.
+
+        3) Sends kill signal 15 to all children then waits up to 4 seconds.
+
+        4) Sends kill signal 9 to any remaining children then waits up to 10
+        seconds
+
+        5) Gives up and returns
+
+AUTHORS
+    Chad Granum exodist7@gmail.com
+
+COPYRIGHT
+    Copyright (C) 2010 Chad Granum
+
+    Parallel-Runner is free software; Standard perl licence.
+
+    Parallel-Runner is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the license for
+    more details.
+
