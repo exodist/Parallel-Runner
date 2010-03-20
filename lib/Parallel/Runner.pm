@@ -6,7 +6,7 @@ use POSIX ();
 use Time::HiRes qw/sleep/;
 use Carp;
 
-our $VERSION = 0.001;
+our $VERSION = 0.002;
 
 for my $accessor (qw/ exit_callback iteration_callback pids pid max /) {
     my $sub = sub {
@@ -140,6 +140,8 @@ Parallel::Runner object destroyed without first calling finish(), This will
 terminate all your child processes. This either means you forgot to call
 finish() or your parent process has died.
 EOT
+    return $self->finish if $^O eq 'MSWin32';
+
     $self->finish( 1, sub {
         $self->killall(15);
         $self->finish(4, sub {

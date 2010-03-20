@@ -25,45 +25,63 @@ finish() or your parent process has died.
 EOT
 }
 
-$one = $CLASS->new(3);
-$one->run( sub { sleep 30 });
-$one->run( sub { sleep 30 });
-lives_ok {
-    my @warn;
-    local $SIG{__WARN__} = sub { push @warn => @_ };
-    local $SIG{ALRM} = sub { die( 'alarm' )};
-    alarm 10;
-    $one->killall(15);
-    $one->finish;
-    alarm 0;
-    like( $warn[0], qr/\d+ - Killing: /, "Warn for first pid" );
-    like( $warn[1], qr/\d+ - Killing: /, "Warn for second pid" );
-} "Killed, no timeout";
+SKIP: {
+    skip ( "Kill works", 1 ) unless $^O eq 'MSWin32';
 
-{
-    my @warn;
-    local $SIG{__WARN__} = sub { push @warn => @_ };
-    $one = $CLASS->new(2);
-    $one->run( sub {
-        local $SIG{TERM} = sub { sleep 30 };
-        sleep 30;
-    });
-    my $pid = $one->pids->[1];
-    $one = undef;
-    sleep 8;
-    my ( $siga, $sigb ) = map { s/\s+.*//s; $_ } @warn[-2,-1];
-    my $diff = $sigb - $siga;
-    ok( $diff > 3, "First signal sent after delay" );
-    ok( $diff < 8, "Second signal sent before too long" );
-};
-
-{
-    my @warn;
-    local $SIG{__WARN__} = sub { push @warn => @_ };
-    my $one = $CLASS->new(3);
-    $one = undef;
-    ok( !@warn, "No warnings for out of scope w/o tasks" );
+    lives_ok {
+        my @warn;
+        local $SIG{__WARN__} = sub { push @warn => @_ };
+        $one = $CLASS->new(2);
+        $one->run( sub { sleep 30 });
+        my $pid = $one->pids->[1];
+        $one = undef;
+        sleep 10;
+    } "Did not kill self";
 }
+
+SKIP: {
+    skip ( "Kill on windows isn't what we want on windows", 5 ) if $^O eq 'MSWin32';
+
+    $one = $CLASS->new(3);
+    $one->run( sub { sleep 30 });
+    $one->run( sub { sleep 30 });
+    lives_ok {
+        my @warn;
+        local $SIG{__WARN__} = sub { push @warn => @_ };
+        local $SIG{ALRM} = sub { die( 'alarm' )};
+        alarm 10;
+        $one->killall(15);
+        $one->finish;
+        alarm 0;
+        like( $warn[0], qr/\d+ - Killing: /, "Warn for first pid" );
+        like( $warn[1], qr/\d+ - Killing: /, "Warn for second pid" );
+    } "Killed, no timeout";
+
+    {
+        my @warn;
+        local $SIG{__WARN__} = sub { push @warn => @_ };
+        $one = $CLASS->new(2);
+        $one->run( sub {
+            local $SIG{TERM} = sub { sleep 30 };
+            sleep 30;
+        });
+        my $pid = $one->pids->[1];
+        $one = undef;
+        sleep 8;
+        my ( $siga, $sigb ) = map { s/\s+.*//s; $_ } @warn[-2,-1];
+        my $diff = $sigb - $siga;
+        ok( $diff > 3, "First signal sent after delay" );
+        ok( $diff < 8, "Second signal sent before too long" );
+    };
+
+    {
+        my @warn;
+        local $SIG{__WARN__} = sub { push @warn => @_ };
+        my $one = $CLASS->new(3);
+        $one = undef;
+        ok( !@warn, "No warnings for out of scope w/o tasks" );
+    }
+};
 
 lives_ok {
     my $one = $CLASS->new();
