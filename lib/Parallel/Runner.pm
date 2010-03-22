@@ -6,7 +6,7 @@ use POSIX ();
 use Time::HiRes qw/sleep/;
 use Carp;
 
-our $VERSION = 0.002;
+our $VERSION = 0.003;
 
 for my $accessor (qw/ exit_callback iteration_callback pids pid max /) {
     my $sub = sub {
@@ -112,6 +112,8 @@ sub finish {
         }
         sleep(0.10);
         $counter += 0.10;
+        $self->iteration_callback->()
+            if $self->iteration_callback;
         last if $timeout and $counter >= $timeout;
     }
     $timeoutsub->() if $timeout
