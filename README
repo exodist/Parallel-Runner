@@ -51,6 +51,9 @@ ACCESSORS
     $val = $runner->exit_callback( \&callback )
         Codref to call just before a child exits (called within child)
 
+    $val = $runner->iteration_delay( $float );
+        How long to wait per iteration if nothing has changed.
+
     $val = $runner->iteration_callback( $newval )
         Coderef to call multiple times in a loop while run() is blocking
         waiting for a process slot.

@@ -6,9 +6,9 @@ use POSIX ();
 use Time::HiRes qw/sleep/;
 use Carp;
 
-our $VERSION = 0.003;
+our $VERSION = 0.004;
 
-for my $accessor (qw/ exit_callback iteration_callback pids pid max /) {
+for my $accessor (qw/ exit_callback iteration_callback pids pid max iteration_delay /) {
     my $sub = sub {
         my $self = shift;
         ($self->{ $accessor }) = @_ if @_;
@@ -26,6 +26,7 @@ sub new {
             pids => [],
             pid  => $$,
             max  => $max || 1,
+            iteration_delay => 0.1,
             @_
         },
         $class
@@ -61,7 +62,7 @@ sub _fork {
         until ( waitpid( $pid, &POSIX::WNOHANG )) {
             $self->iteration_callback->()
                 if $self->iteration_callback;
-            sleep(0.10);
+            sleep($self->iteration_delay);
         }
         return;
     }
@@ -88,7 +89,7 @@ sub get_tid {
         }
         $self->iteration_callback->()
             if $self->iteration_callback;
-        sleep(0.10);
+        sleep($self->iteration_delay);
     }
 }
 
@@ -110,8 +111,8 @@ sub finish {
             delete $pids{$pid}
                 if waitpid( $pid, &POSIX::WNOHANG );
         }
-        sleep(0.10);
-        $counter += 0.10;
+        sleep($self->iteration_delay);
+        $counter += $self->iteration_delay;
         $self->iteration_callback->()
             if $self->iteration_callback;
         last if $timeout and $counter >= $timeout;
@@ -220,6 +221,10 @@ argument, no argument it simply returns the current value.
 =item $val = $runner->exit_callback( \&callback )
 
 Codref to call just before a child exits (called within child)
+
+=item $val = $runner->iteration_delay( $float );
+
+How long to wait per iteration if nothing has changed.
 
 =item $val = $runner->iteration_callback( $newval )
 

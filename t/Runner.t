@@ -17,6 +17,7 @@ is( $one->pid, $$, "Stored pid" );
 is_deeply(
     $one,
     {
+        iteration_delay => 0.1,
         max  => 1,
         pid  => $$,
         pids => [],
