@@ -42,8 +42,17 @@ throws_ok {
 
 my $ran = 0;
 my $iter_callback = sub { $ran++ };
-$one = $CLASS->new(2, iteration_callback => $iter_callback );
-ok( $one->iteration_callback, "Stored callback" );
+my $reap_callback = sub {
+    my ( $exit, $pid, $ret ) = @_;
+    ok( !$exit, "Exited 0" );
+    is( $pid, $ret, "Return pid, not -1 or 0" );
+};
+$one = $CLASS->new( 2,
+    iteration_callback => $iter_callback,
+    reap_callback => $reap_callback,
+);
+is( $one->iteration_callback, $iter_callback, "Stored iter callback" );
+is( $one->reap_callback, $reap_callback, "Stored reap callback" );
 
 $one->run( sub { sleep 5 });
 $one->run( sub { sleep 5 });
@@ -68,7 +77,10 @@ unless( pipe( $read, $write )) {
 
 my $ecallback = sub { print $write "ran\n" };
 
-$one = $CLASS->new( 2, exit_callback => $ecallback );
+$one = $CLASS->new( 2,
+    exit_callback => $ecallback,
+    reap_callback => $reap_callback,
+);
 $one->run( sub { 1 });
 $one->finish;
 

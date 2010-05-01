@@ -58,6 +58,24 @@ ACCESSORS
         Coderef to call multiple times in a loop while run() is blocking
         waiting for a process slot.
 
+    $val = $runner->reap_callback( $newval )
+        Codref to call whenever a pid is reaped using waitpid. The callback
+        sub will be passed 3 values, the first is the exit status of the
+        child process, the second is the pid of the child process, the third
+        is the return of waitpid, which will either be the pid, or -1 if the
+        process didn't exist.
+
+            $runner->reap_callback( sub {
+                my ( $status, $pid, $wait_ret ) = @_;
+
+                # Status as returned from system, so 0 is good, 1+ is bad.
+                die "Child $pid did not exit 0"
+                    if $status;
+
+                die "Wait did not return the process ID, thats very fishy."
+                    unless $pid == $wait_ret;
+            });
+
     $val = $runner->pids([ $pid1, $pid2, ... ])
         Arrayref of child pids
 

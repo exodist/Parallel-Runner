@@ -6,9 +6,9 @@ use POSIX ();
 use Time::HiRes qw/sleep/;
 use Carp;
 
-our $VERSION = 0.004;
+our $VERSION = 0.005;
 
-for my $accessor (qw/ exit_callback iteration_callback pids pid max iteration_delay /) {
+for my $accessor (qw/ exit_callback iteration_callback pids pid max iteration_delay reap_callback/) {
     my $sub = sub {
         my $self = shift;
         ($self->{ $accessor }) = @_ if @_;
@@ -59,11 +59,14 @@ sub _fork {
         return $self->tid_pid( $tid, $pid )
             unless $forced;
 
-        until ( waitpid( $pid, &POSIX::WNOHANG )) {
+        my $ret;
+        until ( $ret = waitpid( $pid, &POSIX::WNOHANG )) {
             $self->iteration_callback->()
                 if $self->iteration_callback;
             sleep($self->iteration_delay);
         }
+        $self->reap_callback->( $? || 0, $pid, $ret )
+            if $self->reap_callback;
         return;
     }
 
@@ -82,8 +85,12 @@ sub get_tid {
         for my $i ( 1 .. $self->max ) {
             if ( my $pid = $existing->[$i] ) {
                 my $out = waitpid( $pid, &POSIX::WNOHANG );
-                $existing->[$i] = undef
-                    if ( $pid == $out || $out < 0 );
+
+                if ( $pid == $out || $out < 0 ) {
+                    $self->reap_callback->( $?, $pid, $out )
+                        if $self->reap_callback;
+                    $existing->[$i] = undef;
+                }
             }
             return $i unless $existing->[$i];
         }
@@ -230,6 +237,24 @@ How long to wait per iteration if nothing has changed.
 
 Coderef to call multiple times in a loop while run() is blocking waiting for a
 process slot.
+
+=item $val = $runner->reap_callback( $newval )
+
+Codref to call whenever a pid is reaped using waitpid. The callback sub will be
+passed 3 values, the first is the exit status of the child process, the second
+is the pid of the child process, the third is the return of waitpid, which will
+either be the pid, or -1 if the process didn't exist.
+
+    $runner->reap_callback( sub {
+        my ( $status, $pid, $wait_ret ) = @_;
+
+        # Status as returned from system, so 0 is good, 1+ is bad.
+        die "Child $pid did not exit 0"
+            if $status;
+
+        die "Wait did not return the process ID, thats very fishy."
+            unless $pid == $wait_ret;
+    });
 
 =item $val = $runner->pids([ $pid1, $pid2, ... ])
 
