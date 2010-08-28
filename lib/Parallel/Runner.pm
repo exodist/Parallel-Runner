@@ -7,7 +7,7 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = 0.007;
+our $VERSION = 0.008;
 
 for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback/) {
     my $sub = sub {
@@ -138,6 +138,9 @@ terminate all your child processes. This either means you forgot to call
 finish() or your parent process has died.
 EOT
 
+    return $self->finish()
+        if $^O eq 'MSWin32';
+
     $self->finish( 1, sub {
         $self->killall(15, 1);
         $self->finish(4, sub {
@@ -241,11 +244,11 @@ process again.
             if $status;
     });
 
-=item $val = $runner->pids([ $pid1, $pid2, ... ])
+=item @children = $runner->children( @append )
 
-Arrayref of child pids
+Returns a list of L<Child::Link::Proc> objects.
 
-=item $val = $runner->pid( $newval )
+=item $val = $runner->pid()
 
 pid of the parent process
 
@@ -267,14 +270,6 @@ Run the specified code in a child process. Blocks if no free slots are
 available. Force fork can be used to force a fork when max is 1, however it
 will still block until the child exits.
 
-=item get_tid()
-
-Get the number of a free process slot, will block if none are available.
-
-=item tid_pid( $pid )
-
-Get the process slot number for a pid.
-
 =item finish()
 
 =item finish( $timeout )
@@ -289,7 +284,7 @@ upon timeout just before the method returns.
 NOTE: DO NOT LET YOUR RUNNER BE DESTROYED BEFORE FINISH COMPLETES WITHOUT A
 TIMEOUT.
 
-the runner will kill all childred, possibly with force if your runner is
+the runner will kill all children, possibly with force if your runner is
 destroyed with children still running, or not waited on.
 
 =item killall( $sig )
@@ -304,6 +299,9 @@ running it will forcefully clean up after you as follows:
 1) Sends an ugly warning.
 
 2) Will first give all your children 1 second to complete.
+
+Windows) Strawberry fails with processes, so on windows DESTROY will wait as
+long as needed, possibly forever.
 
 3) Sends kill signal 15 to all children then waits up to 4 seconds.
 
