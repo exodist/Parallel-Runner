@@ -11,6 +11,7 @@ my $build = Module::Build->new(
     requires => {
         'Time::HiRes' => 0,
         'POSIX'       => 0,
+        'Child'       => '0.009'
     },
     build_requires => {
         'Test::More' => 0,
@@ -20,6 +21,7 @@ my $build = Module::Build->new(
         resources => {
             repository  => 'http://github.com/exodist/Parallel-Runner',
             bugtracker  => 'http://github.com/exodist/Parallel-Runner/issues',
+            homepage    => 'http://open-exodus.net/projects/parrallel-runner'
         },
     }
 );

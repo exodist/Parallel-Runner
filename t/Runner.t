@@ -8,7 +8,7 @@ use Test::Exception::LessClever;
 my $CLASS = 'Parallel::Runner';
 use_ok( $CLASS );
 
-can_ok( $CLASS, qw/new exit_callback iteration_callback pids pid max/);
+can_ok( $CLASS, qw/new exit_callback iteration_callback children _children pid max/);
 
 ok( my $one = $CLASS->new, "Created one" );
 isa_ok( $one, $CLASS );
@@ -18,19 +18,12 @@ is_deeply(
     $one,
     {
         iteration_delay => 0.1,
-        max  => 1,
-        pid  => $$,
-        pids => [],
+        max             => 1,
+        pid             => $$,
+        _children       => [],
     },
     "Built properly"
 );
-
-is( $one->tid_pid( 1 ), undef, "No pid for tid 1" );
-is( $one->tid_pid( 1, 55 ), 55, "set pid for tid" );
-is( $one->tid_pid( 1 ), 55, "Has pid" );
-is( $one->tid_pid( 2, 56 ), 56, "set pid for tid" );
-is( $one->tid_pid( 3, 57 ), 57, "set pid for tid" );
-is_deeply( $one->pids, [ undef, 55, 56, 57 ], "Got pids" );
 $one->finish;
 
 throws_ok {

@@ -52,7 +52,7 @@ ACCESSORS
         Codref to call just before a child exits (called within child)
 
     $val = $runner->iteration_delay( $float );
-        How long to wait per iteration if nothing has changed.
+        How long to wait per iterate if nothing has changed.
 
     $val = $runner->iteration_callback( $newval )
         Coderef to call multiple times in a loop while run() is blocking
@@ -60,20 +60,18 @@ ACCESSORS
 
     $val = $runner->reap_callback( $newval )
         Codref to call whenever a pid is reaped using waitpid. The callback
-        sub will be passed 3 values, the first is the exit status of the
-        child process, the second is the pid of the child process, the third
-        is the return of waitpid, which will either be the pid, or -1 if the
-        process didn't exist.
+        sub will be passed 3 values The first is the exit status of the
+        child process. The second is the pid of the child process. The third
+        used to be the return of waitpid, but this is depricated as Child is
+        now used and throws an exception when waitpid is not what it should
+        be. The third is simply the pid of the child process again.
 
             $runner->reap_callback( sub {
-                my ( $status, $pid, $wait_ret ) = @_;
+                my ( $status, $pid ) = @_;
 
                 # Status as returned from system, so 0 is good, 1+ is bad.
                 die "Child $pid did not exit 0"
                     if $status;
-
-                die "Wait did not return the process ID, thats very fishy."
-                    unless $pid == $wait_ret;
             });
 
     $val = $runner->pids([ $pid1, $pid2, ... ])
@@ -132,6 +130,19 @@ OBJECT METHODS
         seconds
 
         5) Gives up and returns
+
+FENNEC PROJECT
+    This module is part of the Fennec project. See Fennec for more details.
+    Fennec is a project to develop an extendable and powerful testing
+    framework. Together the tools that make up the Fennec framework provide
+    a potent testing environment.
+
+    The tools provided by Fennec are also useful on their own. Sometimes a
+    tool created for Fennec is useful outside the greator framework. Such
+    tools are turned into their own projects. This is one such project.
+
+    Fennec - The core framework
+      The primary Fennec project that ties them all together.
 
 AUTHORS
     Chad Granum exodist7@gmail.com

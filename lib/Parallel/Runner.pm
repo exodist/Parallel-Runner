@@ -5,10 +5,11 @@ use warnings;
 use POSIX ();
 use Time::HiRes qw/sleep/;
 use Carp;
+use Child qw/child/;
 
-our $VERSION = 0.005;
+our $VERSION = 0.007;
 
-for my $accessor (qw/ exit_callback iteration_callback pids pid max iteration_delay reap_callback/) {
+for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback/) {
     my $sub = sub {
         my $self = shift;
         ($self->{ $accessor }) = @_ if @_;
@@ -18,16 +19,33 @@ for my $accessor (qw/ exit_callback iteration_callback pids pid max iteration_de
     *$accessor = $sub;
 }
 
+sub children {
+    my $self = shift;
+    my @active;
+
+    for my $proc ( @{ $self->_children || [] }, @_ ) {
+        if ( defined $proc->exit_status ) {
+            $self->reap_callback->( $proc->exit_status, $proc->pid, $proc->pid )
+                if $self->reap_callback;
+            next;
+        }
+        push @active => $proc;
+    }
+
+    $self->_children( \@active );
+    return @active;
+}
+
 sub new {
     my $class = shift;
     my ($max) = shift;
     return bless(
         {
-            pids => [],
-            pid  => $$,
-            max  => $max || 1,
+            _children       => [],
+            pid             => $$,
+            max             => $max || 1,
             iteration_delay => 0.1,
-            @_
+            @_,
         },
         $class
     );
@@ -39,9 +57,9 @@ sub run {
     croak( "Called run() in child process" )
         unless $self->pid == $$;
 
-    $force_fork = 0 if $self->max > 1;
-    return $self->_fork( $code, $force_fork )
-        if $force_fork || $self->max > 1;
+    my $fork = $self->max > 1;
+    return $self->_fork( $code, $fork ? 0 : $force_fork )
+        if $fork || $force_fork;
 
     return $code->();
 }
@@ -50,112 +68,80 @@ sub _fork {
     my $self = shift;
     my ( $code, $forced ) = @_;
 
-    # This will block if necessary
-    my $tid = $self->get_tid
-        unless $forced;
+    # Wait for a slot
+    $self->_iterate( sub {
+        $self->children >= $self->max
+    }) unless $forced;
 
-    my $pid = fork();
-    if ( $pid ) {
-        return $self->tid_pid( $tid, $pid )
-            unless $forced;
+    my $proc = child {
+        my $parent = shift;
+        $self->_children([]);
 
-        my $ret;
-        until ( $ret = waitpid( $pid, &POSIX::WNOHANG )) {
-            $self->iteration_callback->()
-                if $self->iteration_callback;
-            sleep($self->iteration_delay);
-        }
-        $self->reap_callback->( $? || 0, $pid, $ret )
-            if $self->reap_callback;
-        return;
-    }
+        my @return = $code->();
 
-    # Make sure this new process does not wait on the previous process's children.
-    $self->pids([]);
+        $self->exit_callback->( @return )
+            if $self->exit_callback;
+    };
 
-    my @return = $code->();
-    $self->exit_callback->( @return ) if $self->exit_callback;
-    exit;
-}
+    $self->_iterate( sub {
+        !defined $proc->exit_status
+    }) if $forced;
 
-sub get_tid {
-    my $self = shift;
-    my $existing = $self->pids;
-    while ( 1 ) {
-        for my $i ( 1 .. $self->max ) {
-            if ( my $pid = $existing->[$i] ) {
-                my $out = waitpid( $pid, &POSIX::WNOHANG );
-
-                if ( $pid == $out || $out < 0 ) {
-                    $self->reap_callback->( $?, $pid, $out )
-                        if $self->reap_callback;
-                    $existing->[$i] = undef;
-                }
-            }
-            return $i unless $existing->[$i];
-        }
-        $self->iteration_callback->()
-            if $self->iteration_callback;
-        sleep($self->iteration_delay);
-    }
-}
-
-# Get or set the pid for a tid.
-sub tid_pid {
-    my $self = shift;
-    my ( $tid, $pid ) = @_;
-    $self->pids->[$tid] = $pid if $pid;
-    return $self->pids->[$tid];
+    $self->children( $proc )
+        unless defined $proc->exit_status;
 }
 
 sub finish {
     my $self = shift;
-    my ( $timeout, $timeoutsub ) = @_;
-    my %pids = map { $_ => 1 } grep { $_ } @{ $self->pids };
+    $self->_iterate( sub { $self->children } , @_ );
+}
+
+sub _iterate {
+    my $self = shift;
+    my ( $condition, $timeout, $timeoutsub ) = @_;
     my $counter = 0;
-    while ( values %pids ) {
-        for my $pid ( keys %pids ) {
-            delete $pids{$pid}
-                if waitpid( $pid, &POSIX::WNOHANG );
-        }
-        sleep($self->iteration_delay);
-        $counter += $self->iteration_delay;
+
+    while( $condition->() ) {
         $self->iteration_callback->()
             if $self->iteration_callback;
+
+        $counter += $self->iteration_delay;
         last if $timeout and $counter >= $timeout;
+
+        sleep $self->iteration_delay;
     }
-    $timeoutsub->() if $timeout
-                   && $timeoutsub
-                   && $counter >= $timeout;
-    $self->pids([]);
+
+    $timeoutsub->() if $timeout && $timeoutsub
+                    && $counter >= $timeout;
     1;
 }
 
 sub killall {
     my $self = shift;
-    my ( $sig ) = @_;
-    for my $pid ( grep { $_ } @{ $self->pids }) {
-        warn time . " - Killing: $pid - $sig\n";
-        kill( $sig, $pid );
+    my ( $sig, $warn ) = @_;
+
+    if ( $warn ) {
+        warn time . " - Killing: $_ - $sig\n"
+            for grep { $_->pid } $self->children;
     }
+
+    $_->kill( $sig ) for $self->children;
 }
 
 sub DESTROY {
     my $self = shift;
     return unless $self->pid == $$
-               && $self->pids
-               && @{ $self->pids };
+               && $self->children;
     warn <<EOT;
 Parallel::Runner object destroyed without first calling finish(), This will
 terminate all your child processes. This either means you forgot to call
 finish() or your parent process has died.
 EOT
-    return $self->finish if $^O eq 'MSWin32';
 
     $self->finish( 1, sub {
-        $self->killall(15);
+        $self->killall(15, 1);
         $self->finish(4, sub {
-            $self->killall(9);
+            $self->killall(9, 1);
             $self->finish(10);
         });
     });
@@ -231,7 +217,7 @@ Codref to call just before a child exits (called within child)
 
 =item $val = $runner->iteration_delay( $float );
 
-How long to wait per iteration if nothing has changed.
+How long to wait per iterate if nothing has changed.
 
 =item $val = $runner->iteration_callback( $newval )
 
@@ -241,19 +227,18 @@ process slot.
 =item $val = $runner->reap_callback( $newval )
 
 Codref to call whenever a pid is reaped using waitpid. The callback sub will be
-passed 3 values, the first is the exit status of the child process, the second
-is the pid of the child process, the third is the return of waitpid, which will
-either be the pid, or -1 if the process didn't exist.
+passed 3 values The first is the exit status of the child process. The second
+is the pid of the child process. The third used to be the return of waitpid,
+but this is depricated as L<Child> is now used and throws an exception when
+waitpid is not what it should be. The third is simply the pid of the child
+process again.
 
     $runner->reap_callback( sub {
-        my ( $status, $pid, $wait_ret ) = @_;
+        my ( $status, $pid ) = @_;
 
         # Status as returned from system, so 0 is good, 1+ is bad.
         die "Child $pid did not exit 0"
             if $status;
-
-        die "Wait did not return the process ID, thats very fishy."
-            unless $pid == $wait_ret;
     });
 
 =item $val = $runner->pids([ $pid1, $pid2, ... ])

@@ -4,12 +4,13 @@ use warnings;
 
 use Test::More;
 use Test::Exception::LessClever;
+use Child qw/child/;
 
 my $CLASS = 'Parallel::Runner';
 use_ok( $CLASS );
 
 my $one = $CLASS->new(2);
-$one->pids([undef, undef]);
+$one->_children([child { sleep 10 }]);
 
 # Test::Warn does not handle multi-line warnings properly
 # https://rt.cpan.org/Public/Bug/Display.html?id=25427
@@ -26,14 +27,14 @@ EOT
 }
 
 SKIP: {
-    skip ( "Kill works", 1 ) unless $^O eq 'MSWin32';
+    skip ( "Kill doesn't work right in windows", 1 )
+        if $^O eq 'MSWin32';
 
     lives_ok {
         my @warn;
         local $SIG{__WARN__} = sub { push @warn => @_ };
         $one = $CLASS->new(2);
         $one->run( sub { sleep 30 });
-        my $pid = $one->pids->[1];
         $one = undef;
         sleep 10;
     } "Did not kill self";
@@ -50,7 +51,7 @@ SKIP: {
         local $SIG{__WARN__} = sub { push @warn => @_ };
         local $SIG{ALRM} = sub { die( 'alarm' )};
         alarm 10;
-        $one->killall(15);
+        $one->killall(15, 1);
         $one->finish;
         alarm 0;
         like( $warn[0], qr/\d+ - Killing: /, "Warn for first pid" );
@@ -65,7 +66,6 @@ SKIP: {
             local $SIG{TERM} = sub { sleep 30 };
             sleep 30;
         });
-        my $pid = $one->pids->[1];
         $one = undef;
         sleep 8;
         my ( $siga, $sigb ) = map { s/\s+.*//s; $_ } @warn[-2,-1];
@@ -85,7 +85,7 @@ SKIP: {
 
 lives_ok {
     my $one = $CLASS->new();
-    $one->pids(undef);
+    $one->_children(undef);
     $one = undef;
 } "Handles empty pids accessor";
 
