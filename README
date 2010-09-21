@@ -64,20 +64,21 @@ ACCESSORS
         child process. The second is the pid of the child process. The third
         used to be the return of waitpid, but this is depricated as Child is
         now used and throws an exception when waitpid is not what it should
-        be. The third is simply the pid of the child process again.
+        be. The third is simply the pid of the child process again. The
+        final argument is the child process object itself.
 
             $runner->reap_callback( sub {
-                my ( $status, $pid ) = @_;
+                my ( $status, $pid, $pid_again, $proc ) = @_;
 
                 # Status as returned from system, so 0 is good, 1+ is bad.
                 die "Child $pid did not exit 0"
                     if $status;
             });
 
-    $val = $runner->pids([ $pid1, $pid2, ... ])
-        Arrayref of child pids
+    @children = $runner->children( @append )
+        Returns a list of Child::Link::Proc objects.
 
-    $val = $runner->pid( $newval )
+    $val = $runner->pid()
         pid of the parent process
 
     $val = $runner->max( $newval )
@@ -89,13 +90,6 @@ OBJECT METHODS
         Run the specified code in a child process. Blocks if no free slots
         are available. Force fork can be used to force a fork when max is 1,
         however it will still block until the child exits.
-
-    get_tid()
-        Get the number of a free process slot, will block if none are
-        available.
-
-    tid_pid( $pid )
-        Get the process slot number for a pid.
 
     finish()
     finish( $timeout )
@@ -109,7 +103,7 @@ OBJECT METHODS
         NOTE: DO NOT LET YOUR RUNNER BE DESTROYED BEFORE FINISH COMPLETES
         WITHOUT A TIMEOUT.
 
-        the runner will kill all childred, possibly with force if your
+        the runner will kill all children, possibly with force if your
         runner is destroyed with children still running, or not waited on.
 
     killall( $sig )
@@ -123,6 +117,9 @@ OBJECT METHODS
         1) Sends an ugly warning.
 
         2) Will first give all your children 1 second to complete.
+
+        Windows) Strawberry fails with processes, so on windows DESTROY will
+        wait as long as needed, possibly forever.
 
         3) Sends kill signal 15 to all children then waits up to 4 seconds.
 

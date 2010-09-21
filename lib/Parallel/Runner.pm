@@ -7,7 +7,7 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = 0.008;
+our $VERSION = 0.009;
 
 for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback/) {
     my $sub = sub {
@@ -25,7 +25,7 @@ sub children {
 
     for my $proc ( @{ $self->_children || [] }, @_ ) {
         if ( defined $proc->exit_status ) {
-            $self->reap_callback->( $proc->exit_status, $proc->pid, $proc->pid )
+            $self->reap_callback->( $proc->exit_status, $proc->pid, $proc->pid, $proc )
                 if $self->reap_callback;
             next;
         }
@@ -89,6 +89,8 @@ sub _fork {
 
     $self->children( $proc )
         unless defined $proc->exit_status;
+
+    return $proc;
 }
 
 sub finish {
@@ -234,10 +236,10 @@ passed 3 values The first is the exit status of the child process. The second
 is the pid of the child process. The third used to be the return of waitpid,
 but this is depricated as L<Child> is now used and throws an exception when
 waitpid is not what it should be. The third is simply the pid of the child
-process again.
+process again. The final argument is the child process object itself.
 
     $runner->reap_callback( sub {
-        my ( $status, $pid ) = @_;
+        my ( $status, $pid, $pid_again, $proc ) = @_;
 
         # Status as returned from system, so 0 is good, 1+ is bad.
         die "Child $pid did not exit 0"
