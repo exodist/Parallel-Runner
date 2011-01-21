@@ -27,8 +27,8 @@ EOT
 }
 
 SKIP: {
-    skip ( "Kill doesn't work right in windows", 1 )
-        if $^O eq 'MSWin32';
+    skip ( "Kill tests are only run when \$ENV{RUN_KILL_TESTS} is set", 1 )
+        unless $ENV{'RUN_KILL_TESTS'};
 
     lives_ok {
         my @warn;
@@ -41,7 +41,8 @@ SKIP: {
 }
 
 SKIP: {
-    skip ( "Kill on windows isn't what we want on windows", 5 ) if $^O eq 'MSWin32';
+    skip ( "Kill tests are only run when \$ENV{RUN_KILL_TESTS} is set", 5 )
+        unless $ENV{'RUN_KILL_TESTS'};
 
     $one = $CLASS->new(3);
     $one->run( sub { sleep 30 });

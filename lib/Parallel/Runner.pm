@@ -7,7 +7,7 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = 0.009;
+our $VERSION = 0.010;
 
 for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback/) {
     my $sub = sub {
