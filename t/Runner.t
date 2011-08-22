@@ -43,9 +43,11 @@ my $reap_callback = sub {
 $one = $CLASS->new( 2,
     iteration_callback => $iter_callback,
     reap_callback => $reap_callback,
+    pipe => 1,
 );
 is( $one->iteration_callback, $iter_callback, "Stored iter callback" );
 is( $one->reap_callback, $reap_callback, "Stored reap callback" );
+is( $one->pipe, 1, "Spawn with pipes" );
 
 $one->run( sub { sleep 5 });
 $one->run( sub { sleep 5 });

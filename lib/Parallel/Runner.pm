@@ -7,9 +7,9 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = '0.010';
+our $VERSION = '0.011';
 
-for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback/) {
+for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback pipe/) {
     my $sub = sub {
         my $self = shift;
         ($self->{ $accessor }) = @_ if @_;
@@ -73,15 +73,15 @@ sub _fork {
         $self->children >= $self->max
     }) unless $forced;
 
-    my $proc = child {
+    my $proc = Child->new( sub {
         my $parent = shift;
         $self->_children([]);
 
-        my @return = $code->();
+        my @return = $code->($parent);
 
         $self->exit_callback->( @return )
             if $self->exit_callback;
-    };
+    }, $self->pipe ? (pipe => $self->pipe) : ())->start();
 
     $self->_iterate( sub {
         !defined $proc->exit_status
@@ -104,7 +104,7 @@ sub _iterate {
     my $counter = 0;
 
     while( $condition->() ) {
-        $self->iteration_callback->()
+        $self->iteration_callback->( $self )
             if $self->iteration_callback;
 
         $counter += $self->iteration_delay;
