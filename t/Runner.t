@@ -88,4 +88,45 @@ lives_ok {
 } "read from pipe";
 is( $data, "ran\n", "exit callback ran" );
 
+my @accum_data;
+$one = $CLASS->new( 2,
+    data_callback => sub {
+        my ($data) = @_;
+        push @accum_data => $data;
+    },
+);
+$one->run( sub { return "foo" });
+$one->run( sub { return "bar" });
+$one->run( sub { return "baz" });
+$one->run( sub { return "bat" });
+$one->finish;
+
+is_deeply(
+    [ sort @accum_data ],
+    [ sort qw/foo bar baz bat/ ],
+    "Got all data returned by subprocesses"
+);
+
+@accum_data = ();
+$one = $CLASS->new( 0,
+    data_callback => sub {
+        my ($data) = @_;
+        push @accum_data => $data;
+    },
+);
+$one->run( sub { return "foo" });
+$one->run( sub { return "bar" });
+$one->run( sub { return "baz" });
+$one->run( sub { return "bat" });
+$one->finish;
+
+is_deeply(
+    [ sort @accum_data ],
+    [ sort qw/foo bar baz bat/ ],
+    "Got all data returned when not forking"
+);
+
+
+
+
 done_testing;

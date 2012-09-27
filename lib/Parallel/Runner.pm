@@ -7,9 +7,9 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = '0.011';
+our $VERSION = '0.012';
 
-for my $accessor (qw/ exit_callback iteration_callback _children pid max iteration_delay reap_callback pipe/) {
+for my $accessor (qw/ exit_callback data_callback iteration_callback _children pid max iteration_delay reap_callback pipe/) {
     my $sub = sub {
         my $self = shift;
         ($self->{ $accessor }) = @_ if @_;
@@ -25,8 +25,14 @@ sub children {
 
     for my $proc ( @{ $self->_children || [] }, @_ ) {
         if ( defined $proc->exit_status ) {
+            if ($self->data_callback) {
+                my $data = $proc->read();
+                $self->data_callback->($data)
+            }
+
             $self->reap_callback->( $proc->exit_status, $proc->pid, $proc->pid, $proc )
                 if $self->reap_callback;
+
             next;
         }
         push @active => $proc;
@@ -61,7 +67,11 @@ sub run {
     return $self->_fork( $code, $fork ? 0 : $force_fork )
         if $fork || $force_fork;
 
-    return $code->();
+    my ($data) = $code->();
+    $self->data_callback->( $data )
+        if $self->data_callback;
+
+    return;
 }
 
 sub _fork {
@@ -81,7 +91,11 @@ sub _fork {
 
         $self->exit_callback->( @return )
             if $self->exit_callback;
-    }, $self->pipe ? (pipe => $self->pipe) : ())->start();
+
+        $parent->write( $return[0] )
+            if $self->data_callback;
+
+    }, $self->pipe || $self->data_callback ? (pipe => $self->pipe) : ())->start();
 
     $self->_iterate( sub {
         !defined $proc->exit_status
@@ -215,6 +229,41 @@ These are simple accessors, provididng an argument sets the accessor to that
 argument, no argument it simply returns the current value.
 
 =over 4
+
+=item $val = $runner->data_callback( \&callback )
+
+If this is specified than IPC will be automatically enabled, and the final
+return from each process will be passed into this handler in the main process.
+Due to the way IPC works only strings/numerical data is passed, if you need to
+pass a ref you will need to serialize it yourself before returning it, followed
+by deserializing it in your callback.
+
+Example:
+
+    # Place to put the accumulated data
+    my @accum_data;
+
+    # Create the runner with a callback that pushes the data onto our array.
+    $runner = $CLASS->new( 2,
+        data_callback => sub {
+            my ($data) = @_;
+            push @accum_data => $data;
+        },
+    );
+
+    # 4 processes that return data
+    $runner->run( sub { return "foo" });
+    $runner->run( sub { return "bar" });
+    $runner->run( sub { return "baz" });
+    $runner->run( sub { return "bat" });
+    $runner->finish;
+
+    # Verify the data (order is not predictable)
+    is_deeply(
+        [ sort @accum_data ],
+        [ sort qw/foo bar baz bat/ ],
+        "Got all data returned by subprocesses"
+    );
 
 =item $val = $runner->exit_callback( \&callback )
 
