@@ -48,6 +48,41 @@ ACCESSORS
     These are simple accessors, provididng an argument sets the accessor to
     that argument, no argument it simply returns the current value.
 
+    $val = $runner->data_callback( \&callback )
+        If this is specified than IPC will be automatically enabled, and the
+        final return from each process will be passed into this handler in
+        the main process. Due to the way IPC works only strings/numerical
+        data is passed, if you need to pass a ref you will need to serialize
+        it yourself before returning it, followed by deserializing it in
+        your callback.
+
+        Example:
+
+            # Place to put the accumulated data
+            my @accum_data;
+
+            # Create the runner with a callback that pushes the data onto our array.
+            $runner = $CLASS->new( 2,
+                data_callback => sub {
+                    my ($data) = @_;
+                    push @accum_data => $data;
+                },
+            );
+
+            # 4 processes that return data
+            $runner->run( sub { return "foo" });
+            $runner->run( sub { return "bar" });
+            $runner->run( sub { return "baz" });
+            $runner->run( sub { return "bat" });
+            $runner->finish;
+
+            # Verify the data (order is not predictable)
+            is_deeply(
+                [ sort @accum_data ],
+                [ sort qw/foo bar baz bat/ ],
+                "Got all data returned by subprocesses"
+            );
+
     $val = $runner->exit_callback( \&callback )
         Codref to call just before a child exits (called within child)
 

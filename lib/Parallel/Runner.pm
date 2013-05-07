@@ -7,13 +7,13 @@ use Time::HiRes qw/sleep/;
 use Carp;
 use Child qw/child/;
 
-our $VERSION = '0.012';
+our $VERSION = '0.013';
 
 for my $accessor (qw/ exit_callback data_callback iteration_callback _children pid max iteration_delay reap_callback pipe/) {
     my $sub = sub {
         my $self = shift;
-        ($self->{ $accessor }) = @_ if @_;
-        return $self->{ $accessor };
+        ( $self->{$accessor} ) = @_ if @_;
+        return $self->{$accessor};
     };
     no strict 'refs';
     *$accessor = $sub;
@@ -23,11 +23,11 @@ sub children {
     my $self = shift;
     my @active;
 
-    for my $proc ( @{ $self->_children || [] }, @_ ) {
+    for my $proc ( @{$self->_children || []}, @_ ) {
         if ( defined $proc->exit_status ) {
-            if ($self->data_callback) {
+            if ( $self->data_callback ) {
                 my $data = $proc->read();
-                $self->data_callback->($data)
+                $self->data_callback->($data);
             }
 
             $self->reap_callback->( $proc->exit_status, $proc->pid, $proc->pid, $proc )
@@ -60,15 +60,15 @@ sub new {
 sub run {
     my $self = shift;
     my ( $code, $force_fork ) = @_;
-    croak( "Called run() in child process" )
+    croak("Called run() in child process")
         unless $self->pid == $$;
 
-    my $fork = $self->max > 1;
-    return $self->_fork( $code, $fork ? 0 : $force_fork )
-        if $fork || $force_fork;
+    my $fork = $force_fork || $self->max > 1;
+    return $self->_fork($code)
+        if $fork;
 
     my ($data) = $code->();
-    $self->data_callback->( $data )
+    $self->data_callback->($data)
         if $self->data_callback;
 
     return;
@@ -76,32 +76,36 @@ sub run {
 
 sub _fork {
     my $self = shift;
-    my ( $code, $forced ) = @_;
+    my ($code) = @_;
 
     # Wait for a slot
-    $self->_iterate( sub {
-        $self->children >= $self->max
-    }) unless $forced;
+    $self->_iterate(
+        sub {
+            $self->children >= $self->max;
+        }
+    );
 
-    my $proc = Child->new( sub {
-        my $parent = shift;
-        $self->_children([]);
+    my $proc = Child->new(
+        sub {
+            my $parent = shift;
+            $self->_children( [] );
 
-        my @return = $code->($parent);
+            my @return = $code->($parent);
 
-        $self->exit_callback->( @return )
-            if $self->exit_callback;
+            $self->exit_callback->(@return)
+                if $self->exit_callback;
 
-        $parent->write( $return[0] )
-            if $self->data_callback;
+            $parent->write( $return[0] )
+                if $self->data_callback;
 
-    }, $self->pipe || $self->data_callback ? (pipe => $self->pipe) : ())->start();
+        },
+        $self->pipe || $self->data_callback ? ( pipe => $self->pipe ) : ()
+    )->start();
 
-    $self->_iterate( sub {
-        !defined $proc->exit_status
-    }) if $forced;
+    $self->_iterate( sub { !defined $proc->exit_status } )
+        if $self->max == 1;
 
-    $self->children( $proc )
+    $self->children($proc)
         unless defined $proc->exit_status;
 
     return $proc;
@@ -109,7 +113,7 @@ sub _fork {
 
 sub finish {
     my $self = shift;
-    $self->_iterate( sub { $self->children } , @_ );
+    $self->_iterate( sub { $self->children }, @_ );
 }
 
 sub _iterate {
@@ -117,8 +121,8 @@ sub _iterate {
     my ( $condition, $timeout, $timeoutsub ) = @_;
     my $counter = 0;
 
-    while( $condition->() ) {
-        $self->iteration_callback->( $self )
+    while ( $condition->() ) {
+        $self->iteration_callback->($self)
             if $self->iteration_callback;
 
         $counter += $self->iteration_delay;
@@ -127,8 +131,10 @@ sub _iterate {
         sleep $self->iteration_delay;
     }
 
-    $timeoutsub->() if $timeout && $timeoutsub
-                    && $counter >= $timeout;
+    $timeoutsub->()
+        if $timeout
+        && $timeoutsub
+        && $counter >= $timeout;
     1;
 }
 
@@ -136,18 +142,18 @@ sub killall {
     my $self = shift;
     my ( $sig, $warn ) = @_;
 
-    if ( $warn ) {
-        warn time . " - Killing: $_ - $sig\n"
-            for grep { $_->pid } $self->children;
+    if ($warn) {
+        warn time . " - Killing: $_ - $sig\n" for grep { $_->pid } $self->children;
     }
 
-    $_->kill( $sig ) for $self->children;
+    $_->kill($sig) for $self->children;
 }
 
 sub DESTROY {
     my $self = shift;
-    return unless $self->pid == $$
-               && $self->children;
+    return
+        unless $self->pid == $$
+        && $self->children;
     warn <<EOT;
 Parallel::Runner object destroyed without first calling finish(), This will
 terminate all your child processes. This either means you forgot to call
@@ -157,13 +163,19 @@ EOT
     return $self->finish()
         if $^O eq 'MSWin32';
 
-    $self->finish( 1, sub {
-        $self->killall(15, 1);
-        $self->finish(4, sub {
-            $self->killall(9, 1);
-            $self->finish(10);
-        });
-    });
+    $self->finish(
+        1,
+        sub {
+            $self->killall( 15, 1 );
+            $self->finish(
+                4,
+                sub {
+                    $self->killall( 9, 1 );
+                    $self->finish(10);
+                }
+            );
+        }
+    );
 }
 
 1;
