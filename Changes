@@ -1,0 +1,4 @@
+{{$NEXT}}
+
+    - Move to Dist::Zilla
+    - Switch to Test2::V0
